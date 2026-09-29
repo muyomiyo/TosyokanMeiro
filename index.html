@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>としょかんめいろ</title>
+    <style>
+        body {
+            margin: 0; padding: 0; background-color: #f1f8e9;
+            font-family: 'Hiragino Maru Gothic ProN', 'Rounded M+ 1c', sans-serif; 
+            color: #444; user-select: none;
+            overflow: hidden; transition: background-color 1s;
+        }
+
+        /* ---------------- ゲームのわく（余分な列・行を削ってスッキリさせました） ---------------- */
+        #game-wrapper {
+            width: 750px; height: 570px; display: flex; flex-direction: column;
+            border: 6px solid #fff; border-radius: 20px; 
+            box-shadow: 0 10px 40px rgba(0,0,0,0.15);
+            background-color: white; 
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            transform-origin: center center;
+            overflow: hidden;
+        }
+
+        /* ---------------- がめんコンテナ ---------------- */
+        #canvas-container {
+            position: relative; width: 750px; height: 450px; background-color: #fff;
+        }
+        #game-canvas { display: block; }
+
+        /* --- しゅじんこうの がぞう --- */
+        #player-sprite {
+            position: absolute; width: 80px; height: 80px; object-fit: contain;
+            z-index: 20; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.4));
+            transition: none;
+        }
+        
+        .player-fallback {
+            background-color: #ff9800; border: 3px solid #fff; border-radius: 50%;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+        }
+
+        /* ---------------- アラート（おしらせ） ---------------- */
+        #event-alert {
+            position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%) scale(0);
+            background: rgba(255, 82, 82, 0.9); color: white; padding: 15px 30px; border-radius: 40px;
+            font-size: 28px; font-weight: bold; border: 4px solid #fff; box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            z-index: 100; pointer-events: none; opacity: 0; transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        #event-alert.show { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+
+        /* ---------------- もちもの・テキストエリア ---------------- */
+        #ui-overlay {
+            height: 120px; background: #fff; border-top: 6px solid #ddd; display: flex; box-sizing: border-box; position: relative; z-index: 50; 
+        }
+        #dialogue-box { width: 65%; padding: 15px 25px; box-sizing: border-box; background: #fafafa; border-right: 4px dashed #eee; display: flex; align-items: center;}
+        #dialogue-text { margin: 0; font-size: 20px; line-height: 1.5; color: #333; font-weight: bold;}
+        
+        #inventory-box { width: 35%; padding: 10px; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fff; }
+        #inventory-list { list-style: none; padding: 0; margin: 0; display: flex; gap: 10px; }
+        .inventory-item { width: 50px; height: 50px; border: 3px dashed #ccc; background: #f9f9f9; display: flex; justify-content: center; align-items: center; font-size: 30px; border-radius: 10px; opacity: 0.3; filter: grayscale(100%); transition: 0.3s;}
+        .inventory-item.collected { border: 3px solid #ffca28; background: #fff8e1; opacity: 1; filter: grayscale(0%); transform: scale(1.1); box-shadow: 0 4px 10px rgba(0,0,0,0.1);}
+
+        /* ---------------- スクリーンがめん ---------------- */
+        .overlay-screen {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 500;
+        }
+
+        /* スタートがめん */
+        #start-screen { 
+            background-color: #f1f8e9;
+            background-image: 
+                repeating-linear-gradient(to bottom, transparent, transparent 90px, #c5e1a5 90px, #c5e1a5 100px),
+                repeating-linear-gradient(to right, 
+                    transparent 0, transparent 10px, #ffadad 10px, #ffadad 30px, transparent 30px, transparent 40px,
+                    #ffd6a5 40px, #ffd6a5 60px, transparent 60px, transparent 70px, #9bf6ff 70px, #9bf6ff 85px,
+                    transparent 85px, transparent 100px, #fdffb6 100px, #fdffb6 120px, transparent 120px, transparent 140px,
+                    #a0c4ff 140px, #a0c4ff 160px, transparent 160px, transparent 170px, #caffbf 170px, #caffbf 185px,
+                    transparent 185px, transparent 200px
+                );
+            background-size: 200px 100px;
+        }
+        .start-panel {
+            background: rgba(255, 255, 255, 0.95); padding: 40px 50px; border-radius: 20px;
+            border: 5px solid #81c784; box-shadow: 0 10px 30px rgba(0,0,0,0.2); text-align: center;
+        }
+
+        #start-screen h1 { color: #558b2f; font-size: 46px; margin-top: 0; margin-bottom: 20px; text-shadow: 2px 2px 0px #fff; font-weight: bold; }
+        #start-screen p { color: #33691e; margin-bottom: 30px; text-align: center; line-height: 2; font-size: 20px; font-weight: bold; }
+        
+        .start-btn { background: #4caf50; padding: 15px 50px; color: #fff; border: 4px solid #fff; border-radius: 30px; cursor: pointer; font-size: 26px; font-weight: bold; box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4); transition: 0.2s; }
+        .start-btn:active { transform: scale(0.95); }
+
+        /* クリアがめん (通常) */
+        #msg-screen { background: rgba(255,255,255,0.9); display: none; opacity: 0; transition: opacity 0.5s; z-index:400;}
+        #msg-screen h1 { color: #ff9800; font-size: 50px; text-shadow: 2px 2px 0px #fff; font-weight: bold; text-align: center;}
+
+        /* ---------------- 豪華な全クリア画面専用スタイル ---------------- */
+        #msg-screen.luxurious-clear {
+            background: radial-gradient(circle at center, rgba(255,253,231,0.95) 0%, rgba(255,249,196,0.98) 100%);
+            border: 10px solid #ffd54f; box-sizing: border-box;
+        }
+        .clear-title {
+            color: #ff6f00; font-size: 56px; font-weight: bold; text-align: center; line-height: 1.4;
+            text-shadow: 3px 3px 0px #fff, 0 0 20px #ffe082;
+            animation: floatText 2s ease-in-out infinite;
+        }
+        .clear-decor {
+            font-size: 80px; margin-bottom: 10px; text-align: center;
+            animation: spinBounce 2s infinite alternate;
+        }
+        .luxurious-btn {
+            background: linear-gradient(135deg, #ffca28, #ff8f00);
+            box-shadow: 0 8px 25px rgba(255, 143, 0, 0.5);
+            border: 5px solid #fff; color: #fff; text-shadow: 1px 1px 2px rgba(0,0,0,0.2);
+            font-size: 28px; padding: 20px 60px;
+        }
+        @keyframes floatText {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        @keyframes spinBounce {
+            0% { transform: scale(0.9) rotate(-5deg); }
+            100% { transform: scale(1.1) rotate(5deg); }
+        }
+
+    </style>
+</head>
+<body>
+
+<div id="game-wrapper">
+
+    <!-- スタートがめん -->
+    <div id="start-screen" class="overlay-screen">
+        <div class="start-panel">
+            <h1>としょかんめいろ</h1>
+            <p>としょかんで まよっちゃった！<br>
+            「３さつの ほん」を あつめて とびらに はいれば クリア！<br>
+            ⚠️🕸️を ふむと たいへんなことが おこるかも！？<br>
+            <span style="font-size: 16px; color: #689f38;">（キーボードや コントローラーで うごかそう！）</span></p>
+            <div class="start-btn" onclick="startGame()">ゲームスタート！</div>
+        </div>
+    </div>
+
+    <!-- メッセージがめん -->
+    <div id="msg-screen" class="overlay-screen">
+        <div id="msg-content">
+            <h1 id="msg-title">ステージ クリア！</h1>
+        </div>
+        <div id="retry-btn" class="start-btn" style="display: none; margin-top: 20px;" onclick="resetGame()">もう１かい あそぶ！</div>
+    </div>
+
+    <!-- ゲームがめん -->
+    <div id="canvas-container">
+        <!-- キャンバスのサイズを 750x450 に修正しました -->
+        <canvas id="game-canvas" width="750" height="450"></canvas>
+        
+        <!-- しゅじんこう がぞう -->
+        <img id="player-sprite" src="メガネ.jpg" alt="主人公" 
+             onerror="
+                if(!this.dataset.retried) { 
+                    this.dataset.retried = 'true'; 
+                    this.src = 'メガネ.png'; 
+                } else { 
+                    this.onerror=null; this.classList.add('player-fallback'); 
+                }
+             ">
+        
+        <!-- おしらせ -->
+        <div id="event-alert">⚠️ うごきが バラバラ！</div>
+    </div>
+
+    <!-- もちものエリア -->
+    <div id="ui-overlay">
+        <div id="dialogue-box">
+            <p id="dialogue-text">めいろを さがして、３さつの ほんを みつけよう！</p>
+        </div>
+        <div id="inventory-box">
+            <div style="font-size: 16px; color: #888; font-weight: bold; margin-bottom: 5px;">あつめた ほん</div>
+            <ul id="inventory-list">
+                <li class="inventory-item" id="inv-book1">📕</li>
+                <li class="inventory-item" id="inv-book2">📗</li>
+                <li class="inventory-item" id="inv-book3">📘</li>
+            </ul>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    function resizeGame() {
+        const wrapper = document.getElementById('game-wrapper');
+        // サイズに合わせて拡大縮小の比率を調整
+        const scaleX = window.innerWidth / 790;
+        const scaleY = window.innerHeight / 610; 
+        const scale = Math.min(scaleX, scaleY);
+        wrapper.style.transform = `translate(-50%, -50%) scale(${scale})`;
+    }
+    window.addEventListener('resize', resizeGame);
+    resizeGame();
+
+    const canvas = document.getElementById('game-canvas');
+    const ctx = canvas.getContext('2d');
+    const playerSprite = document.getElementById('player-sprite');
+
+    const TILE_SIZE = 50; 
+    let grid = [];
+
+    // --- ランダムな めいろを作る プログラム ---
+    function generateRandomMap(stageIndex) {
+        const cols = 15;
+        const rows = 9;
+        let maze = Array(rows).fill().map(() => Array(cols).fill('W'));
+        
+        let startX = 1;
+        let startY = 1;
+        maze[startY][startX] = '.';
+        
+        let stack = [[startX, startY]];
+        
+        while(stack.length > 0) {
+            let [cx, cy] = stack[stack.length - 1];
+            let dirs = [];
+            if (cx > 2 && maze[cy][cx - 2] === 'W') dirs.push([-2, 0]);
+            if (cx < cols - 2 && maze[cy][cx + 2] === 'W') dirs.push([2, 0]);
+            if (cy > 2 && maze[cy - 2][cx] === 'W') dirs.push([0, -2]);
+            if (cy < rows - 2 && maze[cy + 2][cx] === 'W') dirs.push([0, 2]);
+            
+            if (dirs.length > 0) {
+                let [dx, dy] = dirs[Math.floor(Math.random() * dirs.length)];
+                maze[cy + dy/2][cx + dx/2] = '.';
+                maze[cy + dy][cx + dx] = '.';
+                stack.push([cx + dx, cy + dy]);
+            } else {
+                stack.pop();
+            }
+        }
+
+        // 遊びやすくするために少し壁を壊す
+        for(let i = 0; i < 35; i++) {
+            let rx = Math.floor(Math.random() * 13) + 1;
+            let ry = Math.floor(Math.random() * 7) + 1;
+            maze[ry][rx] = '.';
+        }
+
+        // --- 余分な列・行の追加処理を完全に削除しました ---
+
+        maze[1][1] = 'S';
+        maze[7][13] = 'G';
+        
+        let emptyCells = [];
+        for(let r = 1; r < rows - 1; r++) {
+            for(let c = 1; c < cols - 1; c++) {
+                if (maze[r][c] === '.' && !(r === 1 && c === 1) && !(r === 7 && c === 13)) {
+                    emptyCells.push({r, c});
+                }
+            }
+        }
+        
+        let placedItems = [{r: 1, c: 1}, {r: 7, c: 13}]; 
+
+        function popScatteredCell() {
+            let bestIdx = 0;
+            let maxScore = -1;
+
+            for (let i = 0; i < emptyCells.length; i++) {
+                let cell = emptyCells[i];
+                let minDist = Infinity;
+                for (let p of placedItems) {
+                    let dist = Math.abs(p.r - cell.r) + Math.abs(p.c - cell.c);
+                    if (dist < minDist) minDist = dist;
+                }
+                let score = minDist + Math.random() * 2;
+                if (score > maxScore) {
+                    maxScore = score;
+                    bestIdx = i;
+                }
+            }
+
+            let chosen = emptyCells[bestIdx];
+            placedItems.push(chosen);
+            emptyCells.splice(bestIdx, 1);
+            return chosen;
+        }
+
+        let b1 = popScatteredCell(); maze[b1.r][b1.c] = '1';
+        let b2 = popScatteredCell(); maze[b2.r][b2.c] = '2';
+        let b3 = popScatteredCell(); maze[b3.r][b3.c] = '3';
+
+        let traps = stageIndex === 0 ? 2 : 3;
+        let webs = stageIndex === 0 ? 0 : 1;
+
+        for(let i = 0; i < traps; i++) {
+            let t = popScatteredCell(); maze[t.r][t.c] = '?';
+        }
+        for(let i = 0; i < webs; i++) {
+            let w = popScatteredCell(); maze[w.r][w.c] = '*';
+        }
+
+        return maze;
+    }
+
+    const themes = [
+        { floor: '#f1f8e9', line: '#dcedc8', shelfTop: '#f1f8e9', shelfBoard: '#c5e1a5', shelfBorder: '#aed581', bg: '#e8f5e9' }, // みどり
+        { floor: '#e1f5fe', line: '#b3e5fc', shelfTop: '#e1f5fe', shelfBoard: '#81d4fa', shelfBorder: '#4fc3f7', bg: '#e1f5fe' }, // あお
+        { floor: '#fce4ec', line: '#f8bbd0', shelfTop: '#fce4ec', shelfBoard: '#f48fb1', shelfBorder: '#f06292', bg: '#fce4ec' }  // ピンク
+    ];
+
+    const bookColors = ['#ffadad', '#ffd6a5', '#fdffb6', '#caffbf', '#9bf6ff', '#a0c4ff', '#bdb2ff'];
+
+    let currentStage = 0;
+    const player = { x: 0, y: 0, size: 36, speed: 4 }; 
+    let startPos = { x: 0, y: 0 };
+    
+    let spider = { active: false, x: 0, y: 0, speed: 2.0 }; 
+    let activeWeb = null; 
+
+    let keys = { Up: false, Down: false, Left: false, Right: false };
+    let currentMap = { Up: 'Up', Down: 'Down', Left: 'Left', Right: 'Right' };
+    let shuffleTimer = null;
+
+    let booksCollected = 0;
+    let gameState = 'START'; 
+    let animationId;
+
+    // --- キーボード・コントローラー操作 ---
+    window.addEventListener('keydown', (e) => {
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd'].includes(e.key)) e.preventDefault();
+        if (e.key === 'ArrowUp' || e.key === 'w') keys.Up = true;
+        if (e.key === 'ArrowDown' || e.key === 's') keys.Down = true;
+        if (e.key === 'ArrowLeft' || e.key === 'a') keys.Left = true;
+        if (e.key === 'ArrowRight' || e.key === 'd') keys.Right = true;
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (e.key === 'ArrowUp' || e.key === 'w') keys.Up = false;
+        if (e.key === 'ArrowDown' || e.key === 's') keys.Down = false;
+        if (e.key === 'ArrowLeft' || e.key === 'a') keys.Left = false;
+        if (e.key === 'ArrowRight' || e.key === 'd') keys.Right = false;
+    });
+
+    function showAlert(msg) {
+        const alertBox = document.getElementById('event-alert');
+        alertBox.style.backgroundColor = msg.includes('✨') ? 'rgba(76, 175, 80, 0.9)' : 'rgba(255, 82, 82, 0.9)';
+        alertBox.innerText = msg;
+        alertBox.classList.add('show');
+        setTimeout(() => alertBox.classList.remove('show'), 1500);
+    }
+
+    function resetControls() {
+        currentMap = { Up: 'Up', Down: 'Down', Left: 'Left', Right: 'Right' };
+        if (shuffleTimer) {
+            clearTimeout(shuffleTimer);
+            shuffleTimer = null;
+        }
+    }
+
+    function shuffleControls() {
+        const dirs = ['Up', 'Down', 'Left', 'Right'];
+        for (let i = dirs.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [dirs[i], dirs[j]] = [dirs[j], dirs[i]];
+        }
+        currentMap.Up = dirs[0];
+        currentMap.Down = dirs[1];
+        currentMap.Left = dirs[2];
+        currentMap.Right = dirs[3];
+
+        showAlert("⚠️ うごきが バラバラ！");
+        document.getElementById('dialogue-text').innerText = "うわっ！ わなだ！ うごきが バラバラに なっちゃった！（１０びょうで もどるよ）";
+
+        if (shuffleTimer) clearTimeout(shuffleTimer);
+        shuffleTimer = setTimeout(() => {
+            resetControls();
+            document.getElementById('dialogue-text').innerText = "うごきが もとに もどったよ！";
+            showAlert("✨ もとに もどった！");
+        }, 10000); 
+    }
+
+    function loadStage(stageIndex) {
+        const mapData = generateRandomMap(stageIndex);
+        const theme = themes[stageIndex % themes.length];
+        document.body.style.backgroundColor = theme.bg;
+
+        grid = mapData;
+        
+        for (let row = 0; row < grid.length; row++) {
+            for (let col = 0; col < grid[row].length; col++) {
+                if (grid[row][col] === 'S') {
+                    player.x = col * TILE_SIZE + (TILE_SIZE - player.size) / 2;
+                    player.y = row * TILE_SIZE + (TILE_SIZE - player.size) / 2;
+                    startPos = { x: player.x, y: player.y };
+                    grid[row][col] = '.'; 
+                }
+            }
+        }
+
+        booksCollected = 0;
+        spider.active = false;
+        activeWeb = null;
+        resetControls();
+        keys = { Up: false, Down: false, Left: false, Right: false };
+        
+        document.getElementById('dialogue-text').innerText = `ステージ ${stageIndex + 1} ！ ３さつの ほんを あつめよう！`;
+        for(let i=1; i<=3; i++) document.getElementById('inv-book'+i).classList.remove('collected');
+
+        playerSprite.style.left = (player.x - 22) + 'px';
+        playerSprite.style.top = (player.y - 22) + 'px';
+
+        gameState = 'PLAYING';
+    }
+
+    function isColliding(nx, ny) {
+        const pad = 4; 
+        const corners = [
+            { x: nx + pad, y: ny + pad },
+            { x: nx + player.size - pad, y: ny + pad },
+            { x: nx + pad, y: ny + player.size - pad },
+            { x: nx + player.size - pad, y: ny + player.size - pad }
+        ];
+
+        for (let c of corners) {
+            let col = Math.floor(c.x / TILE_SIZE);
+            let row = Math.floor(c.y / TILE_SIZE);
+            if (row < 0 || row >= grid.length || col < 0 || col >= grid[0].length) return true;
+            if (grid[row][col] === 'W') return true;
+        }
+        return false;
+    }
+
+    function update() {
+        if (gameState !== 'PLAYING') return;
+
+        // --- コントローラー対応 ---
+        let gpUp = false, gpDown = false, gpLeft = false, gpRight = false;
+        const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+        for (let i = 0; i < gamepads.length; i++) {
+            const gp = gamepads[i];
+            if (gp) {
+                if (gp.buttons[12] && gp.buttons[12].pressed) gpUp = true;
+                if (gp.buttons[13] && gp.buttons[13].pressed) gpDown = true;
+                if (gp.buttons[14] && gp.buttons[14].pressed) gpLeft = true;
+                if (gp.buttons[15] && gp.buttons[15].pressed) gpRight = true;
+                if (gp.axes[1] < -0.5) gpUp = true;
+                if (gp.axes[1] > 0.5) gpDown = true;
+                if (gp.axes[0] < -0.5) gpLeft = true;
+                if (gp.axes[0] > 0.5) gpRight = true;
+            }
+        }
+
+        let isUp = keys.Up || gpUp;
+        let isDown = keys.Down || gpDown;
+        let isLeft = keys.Left || gpLeft;
+        let isRight = keys.Right || gpRight;
+
+        let moveX = 0, moveY = 0;
+        const applyDir = (dir) => {
+            if (dir === 'Up') moveY -= player.speed;
+            if (dir === 'Down') moveY += player.speed;
+            if (dir === 'Left') moveX -= player.speed;
+            if (dir === 'Right') moveX += player.speed;
+        };
+
+        if (isUp) applyDir(currentMap.Up);
+        if (isDown) applyDir(currentMap.Down);
+        if (isLeft) applyDir(currentMap.Left);
+        if (isRight) applyDir(currentMap.Right);
+
+        if (moveX !== 0 && !isColliding(player.x + moveX, player.y)) player.x += moveX;
+        if (moveY !== 0 && !isColliding(player.x, player.y + moveY)) player.y += moveY;
+
+        playerSprite.style.left = (player.x - 22) + 'px';
+        playerSprite.style.top = (player.y - 22) + 'px';
+
+        if (spider.active) {
+            let dx = (player.x + player.size / 2) - spider.x;
+            let dy = (player.y + player.size / 2) - spider.y;
+            let dist = Math.hypot(dx, dy);
+            
+            if (dist > 0) {
+                spider.x += (dx / dist) * spider.speed;
+                spider.y += (dy / dist) * spider.speed;
+            }
+
+            if (dist < (player.size / 2 + 15)) {
+                player.x = startPos.x;
+                player.y = startPos.y;
+                spider.active = false;
+                grid[activeWeb.row][activeWeb.col] = '*'; 
+                activeWeb = null;
+                resetControls(); 
+                
+                document.getElementById('dialogue-text').innerText = "クモに つかまっちゃった！ スタートに もどるよ！";
+                showAlert("🕷️ つかまった！");
+                
+                playerSprite.style.opacity = 0.5;
+                setTimeout(() => playerSprite.style.opacity = 1, 500);
+            }
+        }
+
+        let pCol = Math.floor((player.x + player.size / 2) / TILE_SIZE);
+        let pRow = Math.floor((player.y + player.size / 2) / TILE_SIZE);
+        
+        if(pRow >= 0 && pRow < grid.length && pCol >= 0 && pCol < grid[0].length) {
+            let cell = grid[pRow][pCol];
+
+            if (cell === '?') {
+                shuffleControls();
+                grid[pRow][pCol] = '.'; 
+            }
+
+            if (cell === '*') {
+                // キャンバスサイズに合わせて四隅の出現ポイントを修正 (750x450)
+                const corners = [ {x:0, y:0}, {x:750, y:0}, {x:0, y:450}, {x:750, y:450} ];
+                let spawn = corners[Math.floor(Math.random() * corners.length)];
+                spider.x = spawn.x;
+                spider.y = spawn.y;
+                spider.active = true;
+                
+                activeWeb = { row: pRow, col: pCol };
+                grid[pRow][pCol] = '.'; 
+                
+                document.getElementById('dialogue-text').innerText = "クモのすを ふんじゃった！ 🕷️が おいかけてくるぞ！ にげろー！";
+                showAlert("🕸️ クモが きた！にげて！");
+            }
+
+            if (['1', '2', '3'].includes(cell)) {
+                document.getElementById('inv-book' + cell).classList.add('collected');
+                grid[pRow][pCol] = '.'; 
+                booksCollected++;
+                
+                if(booksCollected === 1) document.getElementById('dialogue-text').innerText = "ほんを みつけた！ あと ２さつ！";
+                if(booksCollected === 2) document.getElementById('dialogue-text').innerText = "２さつめを みつけた！ あと １さつ！";
+                if(booksCollected === 3) document.getElementById('dialogue-text').innerText = "ぜんぶ あつまった！ ゴールの とびらへ むかおう！";
+            }
+
+            if (cell === 'G') {
+                if (booksCollected === 3) {
+                    gameState = 'STAGE_CLEAR';
+                    handleStageClear();
+                } else {
+                    document.getElementById('dialogue-text').innerText = `まだ ほんが たりないよ！（いま: ${booksCollected}さつ）`;
+                }
+            }
+        }
+    }
+
+    function draw() {
+        const theme = themes[currentStage % themes.length];
+        
+        ctx.fillStyle = theme.floor;
+        ctx.fillRect(0, 0, 750, 450); // 描画サイズを 750x450 に修正
+
+        ctx.strokeStyle = theme.line;
+        ctx.lineWidth = 2;
+        for(let i=0; i<=750; i+=TILE_SIZE) {
+            ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 450); ctx.stroke();
+        }
+        for(let i=0; i<=450; i+=TILE_SIZE) {
+            ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(750, i); ctx.stroke();
+        }
+
+        for (let row = 0; row < grid.length; row++) {
+            for (let col = 0; col < grid[row].length; col++) {
+                let cell = grid[row][col];
+                let px = col * TILE_SIZE;
+                let py = row * TILE_SIZE;
+
+                if (cell === 'W') {
+                    ctx.fillStyle = theme.shelfTop;
+                    ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+                    ctx.fillStyle = theme.shelfBoard;
+                    ctx.fillRect(px, py + TILE_SIZE/2 - 2, TILE_SIZE, 4);
+                    
+                    ctx.fillStyle = bookColors[(row + col) % bookColors.length];
+                    ctx.fillRect(px + 6, py + 6, 10, TILE_SIZE/2 - 8);
+                    ctx.fillStyle = bookColors[(row * col) % bookColors.length];
+                    ctx.fillRect(px + 20, py + 6, 14, TILE_SIZE/2 - 8);
+                    ctx.fillStyle = bookColors[(row + col + 1) % bookColors.length];
+                    ctx.fillRect(px + 10, py + TILE_SIZE/2 + 2, 8, TILE_SIZE/2 - 8);
+                    ctx.fillStyle = bookColors[(row * 2 + col) % bookColors.length];
+                    ctx.fillRect(px + 22, py + TILE_SIZE/2 + 2, 16, TILE_SIZE/2 - 8);
+                    
+                    ctx.strokeStyle = theme.shelfBorder;
+                    ctx.lineWidth = 2;
+                    ctx.strokeRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+                } 
+                else if (cell === '?') {
+                    ctx.font = '36px sans-serif'; 
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    let bob = Math.sin(Date.now() / 150) * 3; 
+                    ctx.fillText('⚠️', px + TILE_SIZE/2, py + TILE_SIZE/2 + bob);
+                }
+                else if (cell === '*') {
+                    ctx.font = '40px sans-serif'; 
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText('🕸️', px + TILE_SIZE/2, py + TILE_SIZE/2);
+                }
+                else if (['1', '2', '3'].includes(cell)) {
+                    ctx.font = '36px sans-serif'; 
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    let icon = cell === '1' ? '📕' : (cell === '2' ? '📗' : '📘');
+                    let bob = Math.sin(Date.now() / 200) * 4; 
+                    ctx.fillText(icon, px + TILE_SIZE/2, py + TILE_SIZE/2 + bob);
+                }
+                else if (cell === 'G') {
+                    ctx.fillStyle = '#d7ccc8';
+                    ctx.fillRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8);
+                    ctx.fillStyle = '#8d6e63';
+                    ctx.fillRect(px + 10, py + 10, TILE_SIZE - 20, TILE_SIZE - 20);
+                    ctx.font = '36px sans-serif'; 
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText('🚪', px + TILE_SIZE/2, py + TILE_SIZE/2);
+                }
+            }
+        }
+
+        if (spider.active) {
+            ctx.font = '50px sans-serif'; 
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            let sx = spider.x + Math.sin(Date.now() / 50) * 2;
+            let sy = spider.y + Math.cos(Date.now() / 50) * 2;
+            ctx.fillText('🕷️', sx, sy);
+        }
+    }
+
+    function gameLoop() {
+        update();
+        draw();
+        if (gameState !== 'GAME_CLEAR') {
+            animationId = requestAnimationFrame(gameLoop);
+        }
+    }
+
+    function handleStageClear() {
+        const msgScreen = document.getElementById('msg-screen');
+        const msgContent = document.getElementById('msg-title');
+        const retryBtn = document.getElementById('retry-btn');
+        
+        currentStage++;
+        if (currentStage >= 3) {
+            gameState = 'GAME_CLEAR';
+            msgScreen.classList.add('luxurious-clear');
+            msgContent.innerHTML = "<div class='clear-decor'>🎉👑🎊</div><div class='clear-title'>すべての めいろを クリアしたよ！<br>おめでとう！！</div>";
+            
+            retryBtn.classList.add('luxurious-btn');
+            retryBtn.style.display = 'block'; 
+            msgScreen.style.display = 'flex';
+            setTimeout(() => { msgScreen.style.opacity = '1'; }, 50);
+        } else {
+            msgContent.innerText = `ステージ ${currentStage} クリア！`;
+            retryBtn.style.display = 'none'; 
+            msgScreen.style.display = 'flex';
+            setTimeout(() => { msgScreen.style.opacity = '1'; }, 50);
+            
+            setTimeout(() => {
+                msgScreen.style.opacity = '0';
+                setTimeout(() => { 
+                    msgScreen.style.display = 'none'; 
+                    loadStage(currentStage);
+                }, 500);
+            }, 2000);
+        }
+    }
+
+    function resetGame() {
+        const msgScreen = document.getElementById('msg-screen');
+        msgScreen.style.opacity = '0';
+        setTimeout(() => {
+            msgScreen.classList.remove('luxurious-clear');
+            msgScreen.style.display = 'none';
+            
+            const retryBtn = document.getElementById('retry-btn');
+            retryBtn.style.display = 'none';
+            retryBtn.classList.remove('luxurious-btn');
+            
+            document.getElementById('start-screen').style.display = 'flex';
+        }, 500);
+    }
+
+    function startGame() {
+        document.getElementById('start-screen').style.display = 'none';
+        currentStage = 0;
+        loadStage(currentStage);
+        if(animationId) cancelAnimationFrame(animationId);
+        gameLoop();
+    }
+
+    loadStage(0);
+    gameState = 'START'; 
+    draw();
+
+</script>
+</body>
+</html>
